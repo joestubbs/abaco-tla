@@ -41,7 +41,7 @@ VARIABLES next_actor_id,     \* global counter to track the next actor id.
           next_execution_id  \* global counter to track the next execution id.
 
 
-vars == <<actors, workers, executions>>
+vars == <<actors, workers, executions, next_actor_id, next_worker_id,next_execution_id>>
 
 
 
@@ -51,6 +51,7 @@ Store_Init ==
     /\ next_actor_id = 0
     /\ next_worker_id = 0
     /\ next_execution_id = 0
+   \* /\ actors = {}
 
 
 \* helpers
@@ -70,7 +71,7 @@ Inc_Execution_Id ==
 \* create a new actor with the next actor id.
 Create_Actor == 
     /\ next_actor_id <= Max_Actors
-    /\ actor_ids' = actor_ids \cup next_actor_id \* add the next actor_id to the actor_ids set.
+    /\ actor_ids' = actor_ids \cup {next_actor_id} \* add the next actor_id to the actor_ids set.
     /\ Inc_Actor_Id \* increment the next_actor_id var
     /\ actors' = [ actors EXCEPT ![next_actor_id] = [actor_id |-> next_actor_id,
                                                      status |-> "SUBMITTED" ] ]
@@ -84,7 +85,7 @@ Delete_Actor(n) ==
 Send_Message(n) ==
 \* send a message to the nth actor; this is implemented as an execution in SUBMITTED status
     /\ next_execution_id <= Max_Executions
-    /\ execution_ids' = execution_ids \cup next_execution_id \* add the next execution_id to the execution_ids set.
+    /\ execution_ids' = execution_ids \cup {next_execution_id} \* add the next execution_id to the execution_ids set.
     /\ Inc_Execution_Id \* increment the next_execution_id var
     /\ executions' = [ executions EXCEPT ![n] = [actor_id |-> n,
                                                  execution_id |-> next_execution_id,
@@ -111,5 +112,6 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
+\* Last modified Thu Jul 16 16:09:36 CDT 2020 by spadhy
 \* Last modified Mon May 25 16:31:54 CDT 2020 by jstubbs
 \* Created Mon May 18 16:59:16 CDT 2020 by jstubbs
