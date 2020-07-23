@@ -48,7 +48,7 @@ TypeInvariant ==
 
 Init == 
     /\ actorStatus = [a \in Actors |-> "READY"] 
-    /\ workerStatus = [w \in Workers|->"IDLE"]
+    /\ workerStatus = [w \in Workers|-> "IDLE"]
     /\ msg_queue = <<>>
     /\ m=0
     /\ tmsg = 0
@@ -71,16 +71,16 @@ ActorRecv(msg, a) ==    \* enabling condition ??
     /\ UNCHANGED<<actorStatus,workerStatus,m>>   
 
 DoWork(msg, w) == 
-    /\ workerStatus[w] = "BUSY"
+\*    /\ workerStatus[w] = "BUSY"
     /\ m' = m + 1
     /\ workerStatus' = [workerStatus EXCEPT ![w] = "FINISHED"]  
     /\ UNCHANGED<<msg_queue,actorStatus, tmsg>>     
 
 WorkerRecv(w) ==
     /\ Len(msg_queue) > 0  
-    /\ workerStatus[w] = "IDLE" 
-    /\ workerStatus' = [workerStatus EXCEPT ![w] = "BUSY"]
-    /\ DoWork(Head(msg_queue), w)   
+    /\ workerStatus[w] = "IDLE"
+    /\ m' = m + 1
+    /\ workerStatus' = [workerStatus EXCEPT ![w] = "FINISHED"]       
     /\ msg_queue'=Tail(msg_queue)
     /\ UNCHANGED<<actorStatus, tmsg>>   
 
@@ -89,11 +89,9 @@ FreeWorker(w) ==
  /\ workerStatus' = [workerStatus EXCEPT ![w] = "IDLE"]
  /\ UNCHANGED<<msg_queue,actorStatus,m,tmsg>>   
 
- Next == 
-    \*/\ \E a \in Actors, msg \in Message: Send(msg,a)
-    \/ \E msg \in Message, a \in Actors: ActorRecv(msg,a)
+ Next == /\ \/ \E msg \in Message, a \in Actors: ActorRecv(msg,a)
     \/ \E w \in Workers: WorkerRecv(w)
-    \/ \E w \in Workers: FreeWorker(w)
+    \/ \E w2 \in Workers: FreeWorker(w2)
        
    
 
@@ -101,5 +99,6 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
+\* Last modified Wed Jul 22 22:58:15 CDT 2020 by jstubbs
 \* Last modified Wed Jul 22 17:53:11 CDT 2020 by spadhy
 \* Created Tue Jul 21 23:41:57 CDT 2020 by spadhy
