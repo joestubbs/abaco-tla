@@ -57,7 +57,10 @@ Init ==
     /\ tmsg = 0
     /\ totalNumWorkers = 0
     /\ workersCreated = {}
-    
+
+\* A temporal property: ensures the msq_queue is eventually 0 from now on.
+AllMessagesProcessed == <>[](Len(msg_queue) = 0)
+
 ActorRecv(msg, a) ==    
     /\  actorStatus[a]="READY"
     /\  tmsg < MaxMessage
@@ -67,7 +70,7 @@ ActorRecv(msg, a) ==
     /\  UNCHANGED<<actorStatus,workerStatus,m,totalNumWorkers, workersCreated>>   
 
 CreateWorker(w) ==
-    /\ Len(msg_queue) > ScaleUpThreshold
+    /\ Len(msg_queue) >= ScaleUpThreshold
     /\ \A w1 \in Workers: workerStatus[w1] \in {"BUSY","-"}
     /\ totalNumWorkers < MaxWorkers
     /\ workerStatus[w] = "-"
@@ -95,7 +98,7 @@ FreeWorker(w) ==
  /\ workerStatus' = [workerStatus EXCEPT ![w] = "IDLE"]
  /\ UNCHANGED<<msg_queue,actorStatus,m, tmsg, totalNumWorkers, workersCreated>>   
 
- Next == /\ \/ \E msg \in Message, a \in Actors: ActorRecv(msg,a)
+ Next == \/ \E msg \in Message, a \in Actors: ActorRecv(msg,a)
             \/ \E w \in Workers: CreateWorker(w)
             \/ \E w1 \in Workers: WorkerRecv(w1)
             \/ \E w2 \in Workers: WorkerBusy(w2)
@@ -104,7 +107,16 @@ FreeWorker(w) ==
    
 
 Spec == Init /\ [][Next]_vars  
+        \* Add weak fairness properties for each action we want to ensure eventually happens.
+        \* The expression inside the () must be a true/false expression.
+        /\ WF_vars(\E w \in Workers: CreateWorker(w))
+        /\ WF_vars(\E w \in Workers: WorkerRecv(w))
+        /\ WF_vars(\E w \in Workers: WorkerBusy(w))
+        /\ WF_vars(\E w \in Workers: FreeWorker(w))
+        
+        
 =============================================================================
 \* Modification History
+\* Last modified Mon Aug 10 15:37:10 CDT 2020 by jstubbs
 \* Last modified Wed Aug 05 14:54:17 CDT 2020 by spadhy
 \* Created Wed Aug 05 12:45:12 CDT 2020 by spadhy
