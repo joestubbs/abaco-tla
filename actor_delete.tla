@@ -76,23 +76,21 @@ ActorRecv(msg, a) ==
 
  
  ActorDeleteMsg(msg,a) ==
+    /\ actorStatus[a] = "READY"
     /\ msg.type = "DELETE"
     /\ msg.actor = a
-    /\  msg_queues'= [msg_queues EXCEPT ![a] = Append(msg_queues[a],msg)]
+    /\ tmsg < MaxMessage
+    /\ Len(msg_queues[a]) <  MaxQueueSize
+    /\ msg_queues'= [msg_queues EXCEPT ![a] = Append(msg_queues[a],msg)]
     /\ actorStatus' = [actorStatus EXCEPT ![a] = "SHUTTING_DOWN"]
-    \*/\ workerStatus' = \A w \in actorWorkers: workerStatus[w]=[actor|->a, status|->"STOPPING"]
-    /\ workerStatus' = [ w \in Workers |-> IF workerStatus[w].actor=a  THEN  [actor|->a, status|->"STOPPING"]
-                                                                           ELSE workerStatus[w]]
-    
-    /\ UNCHANGED<<msg_queues,m, tmsg,totalNumWorkers, workersCreated, cmd_queues,actorWorkers,saveWork>>                                                                        
+    /\ UNCHANGED<<m, tmsg,workerStatus,totalNumWorkers, workersCreated, cmd_queues,actorWorkers,saveWork>>                                                                        
  
   
  DeleteWorker(w,a) ==
- /\ workerStatus[w].status = "STOPPING"
- /\ saveWork' = saveWork + 1
- /\ actorWorkers'=  [actorWorkers EXCEPT ![a] = actorWorkers[a] \ {w}] \*<-- may need to change to IF then else
- /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"DELETED"]]                                                   
- /\ UNCHANGED<<msg_queues,actorStatus,m, tmsg, totalNumWorkers, workersCreated, cmd_queues>>                                                  
+    /\ actorStatus[a] = "SHUTTING_DOWN"
+     /\ actorWorkers'=  [actorWorkers EXCEPT ![a] = actorWorkers[a] \ {w}] \*<-- may need to change to IF then else
+    /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"DELETED"]]                                                   
+    /\ UNCHANGED<<msg_queues,actorStatus,m, tmsg, totalNumWorkers, workersCreated, cmd_queues,saveWork>>                                                  
  
  
  DeleteActor(a) ==
@@ -111,9 +109,6 @@ CreateWorker(w,a) ==
     /\ workerStatus[w]=[actor|->"a0", status|->"-"]
     /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"IDLE"]] 
     /\ workersCreated' = workersCreated \cup {w}
-   \* /\ actorWorkers' = [ a1 \in Actors |-> IF a=a1 THEN actorWorkers[a] \cup {w}  \* Note the way an element of sequence is updated
-   \* ELSE actorWorkers[a]]
-   \*  
     /\ actorWorkers' = [actorWorkers EXCEPT ![a]= actorWorkers[a] \cup {w}]                                              
     /\ totalNumWorkers' = totalNumWorkers + 1      
     /\ UNCHANGED<<msg_queues,actorStatus,m,tmsg,cmd_queues,saveWork>>
@@ -140,12 +135,12 @@ FreeWorker(w,a) ==
 Next == 
             \/ \E msg \in Messages, a \in Actors: ActorRecv(msg,a) 
             \/ \E msg \in Messages, a \in Actors:  ActorDeleteMsg(msg,a)
-            \/ \E w \in Workers,  a1 \in Actors: CreateWorker(w,a1)  
-            \/ \E w1 \in Workers, a2 \in Actors: WorkerRecv(w1, a2)
-             \/ \E w2 \in Workers, a3\in Actors: WorkerBusy(w2,a3)
-            \/ \E w3 \in Workers, a4\in Actors: FreeWorker(w3,a4)
-            \/ \E w4 \in Workers, a6 \in Actors: DeleteWorker(w4,a6)
-            \/ \E a7 \in Actors: DeleteActor(a7)
+            \/ \E w \in Workers,  a \in Actors: CreateWorker(w,a)  
+            \/ \E w \in Workers, a \in Actors: WorkerRecv(w, a)
+            \/ \E w \in Workers, a\in Actors: WorkerBusy(w,a)
+            \/ \E w \in Workers, a\in Actors: FreeWorker(w,a)
+            \/ \E w \in Workers, a \in Actors: DeleteWorker(w,a)
+            \/ \E a \in Actors: DeleteActor(a)
 
 Spec == Init /\ [][Next]_vars  
 
@@ -153,5 +148,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Thu Aug 13 17:28:42 CDT 2020 by spadhy
+\* Last modified Thu Aug 13 18:18:43 CDT 2020 by spadhy
 \* Created Thu Aug 13 00:58:32 CDT 2020 by spadhy
