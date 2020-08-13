@@ -76,10 +76,12 @@ ActorRecv(msg, a) ==
 
  
  ActorDeleteMsg(msg,a) ==
-    /\ msg = [type|->"DELETE", actor|->a]
+    /\ msg.type = "DELETE"
+    /\ msg.actor = a
+    /\  msg_queues'= [msg_queues EXCEPT ![a] = Append(msg_queues[a],msg)]
     /\ actorStatus' = [actorStatus EXCEPT ![a] = "SHUTTING_DOWN"]
     \*/\ workerStatus' = \A w \in actorWorkers: workerStatus[w]=[actor|->a, status|->"STOPPING"]
-    /\ workerStatus' = [ w \in Workers |-> IF workerStatus[w].actor=a THEN workerStatus[w]=[actor|->a, status|->"STOPPING"]
+    /\ workerStatus' = [ w \in Workers |-> IF workerStatus[w].actor=a  THEN  [actor|->a, status|->"STOPPING"]
                                                                            ELSE workerStatus[w]]
     
     /\ UNCHANGED<<msg_queues,m, tmsg,totalNumWorkers, workersCreated, cmd_queues,actorWorkers,saveWork>>                                                                        
@@ -139,11 +141,11 @@ Next ==
             \/ \E msg \in Messages, a \in Actors: ActorRecv(msg,a) 
             \/ \E msg \in Messages, a \in Actors:  ActorDeleteMsg(msg,a)
             \/ \E w \in Workers,  a1 \in Actors: CreateWorker(w,a1)  
-            \*\/ \E w1 \in Workers, a2 \in Actors: WorkerRecv(w1, a2)
-            \* \/ \E w2 \in Workers, a3\in Actors: WorkerBusy(w2,a3)
-            \*\/ \E w3 \in Workers, a4\in Actors: FreeWorker(w3,a4)
-            \*\/ \E w4 \in Workers, a6 \in Actors: DeleteWorker(w4,a6)
-            \*\/ \E a7 \in Actors: DeleteActor(a7)
+            \/ \E w1 \in Workers, a2 \in Actors: WorkerRecv(w1, a2)
+             \/ \E w2 \in Workers, a3\in Actors: WorkerBusy(w2,a3)
+            \/ \E w3 \in Workers, a4\in Actors: FreeWorker(w3,a4)
+            \/ \E w4 \in Workers, a6 \in Actors: DeleteWorker(w4,a6)
+            \/ \E a7 \in Actors: DeleteActor(a7)
 
 Spec == Init /\ [][Next]_vars  
 
@@ -151,5 +153,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Thu Aug 13 15:55:16 CDT 2020 by spadhy
+\* Last modified Thu Aug 13 17:28:42 CDT 2020 by spadhy
 \* Created Thu Aug 13 00:58:32 CDT 2020 by spadhy
