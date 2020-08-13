@@ -58,22 +58,24 @@ Init ==
     /\ totalNumWorkers = 0
     /\ workersCreated = {}
   
-    
+
+\* A temporal property: ensures the msq_queue is eventually 0 from now on.
+AllMessagesProcessed == <>[](\A a \in Actors: Len(msg_queues[a]) = 0)    
     
 ActorRecv(msg, a) ==    
     /\  actorStatus[a] = "READY"
     /\  tmsg < MaxMessage
     /\  Len(msg_queues[a]) <  MaxQueueSize
-    /\  msg_queues' = [ a1 \in Actors |-> IF a=a1 THEN Append(msg_queues[a],msg)  \* Note the way an element of sequence is updated
-                                                 ELSE msg_queues[a]]
-    \*/\  msg_queues'= [msg_queues EXCEPT ![msg_queues[a]] = Append(msg_queues[a],msg)] <-- this is not working
+   \* /\  msg_queues' = [ a1 \in Actors |-> IF a=a1 THEN Append(msg_queues[a],msg)  \* Note the way an element of sequence is updated
+    \*                                             ELSE msg_queues[a]]
+    /\  msg_queues'= [msg_queues EXCEPT ![a] = Append(msg_queues[a],msg)] 
     /\  tmsg' = tmsg + 1
     /\  UNCHANGED<<actorStatus,workerStatus,m,totalNumWorkers, workersCreated>>   
 
  
       
 CreateWorker(w,a) ==
-    /\ Len(msg_queues[a]) > ScaleUpThreshold
+    /\ Len(msg_queues[a]) >= ScaleUpThreshold
     /\ totalNumWorkers < MaxWorkers
     /\ workerStatus[w]=[actor|->"a0", status|->"-"]
     /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"IDLE"]] 
@@ -86,8 +88,9 @@ WorkerRecv(w,a) ==
     /\ Len(msg_queues[a]) > 0  
     /\ workerStatus[w] = [actor|->a, status|->"IDLE"]
     /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"BUSY"]]  
-    /\ msg_queues' = [ a1 \in Actors |-> IF a=a1 THEN Tail(msg_queues[a])
-                                                 ELSE msg_queues[a]]
+    \*/\ msg_queues' = [ a1 \in Actors |-> IF a=a1 THEN Tail(msg_queues[a])
+    \*                                             ELSE msg_queues[a]]
+    /\ msg_queues' = [msg_queues EXCEPT ![a] = Tail(msg_queues[a])]                                           
     /\ UNCHANGED<<actorStatus,m, tmsg, totalNumWorkers, workersCreated>>    
 
 WorkerBusy(w,a) == 
@@ -102,14 +105,18 @@ FreeWorker(w,a) ==
  /\ UNCHANGED<<msg_queues,actorStatus,m, tmsg, totalNumWorkers, workersCreated>>         
 
 Next ==     \/ \E msg \in Message, a \in Actors: ActorRecv(msg,a)  
-            \/ \E w \in Workers,  a1 \in Actors: CreateWorker(w,a1)
-            \/ \E w1 \in Workers, a2 \in Actors: WorkerRecv(w1, a2)
-            \/ \E w2 \in Workers, a3\in Actors: WorkerBusy(w2,a3)
-            \/ \E w3 \in Workers, a4\in Actors: FreeWorker(w3,a4)
+            \/ \E w \in Workers,  a \in Actors: CreateWorker(w,a)
+            \/ \E w \in Workers, a \in Actors: WorkerRecv(w, a)
+            \/ \E w \in Workers, a\in Actors: WorkerBusy(w,a)
+            \/ \E w \in Workers, a\in Actors: FreeWorker(w,a)
 
-Spec == Init /\ [][Next]_vars  
+Spec == Init /\ [][Next]_vars
+        /\ WF_vars(\E w \in Workers, a \in Actors: CreateWorker(w,a))
+       \* /\ WF_vars(\E w \in Workers, a \in Actors: WorkerRecv(w,a))
+       \* /\ WF_vars(\E w \in Workers, a \in Actors: WorkerBusy(w,a))
+        \*/\ WF_vars(\E w \in Workers,a \in Actors: FreeWorker(w,a))  
 
 =============================================================================
 \* Modification History
-\* Last modified Tue Aug 11 08:34:21 CDT 2020 by spadhy
+\* Last modified Thu Aug 13 16:46:07 CDT 2020 by spadhy
 \* Created Mon Aug 10 10:23:50 CDT 2020 by spadhy
