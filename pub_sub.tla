@@ -75,7 +75,7 @@ ActorRecv(msg, a) ==
  
       
 CreateWorker(w,a) ==
-    /\ Len(msg_queues[a]) >= ScaleUpThreshold
+    /\ Len(msg_queues[a]) >=ScaleUpThreshold
     /\ totalNumWorkers < MaxWorkers
     /\ workerStatus[w]=[actor|->"a0", status|->"-"]
     /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"IDLE"]] 
@@ -112,11 +112,11 @@ Next ==     \/ \E msg \in Message, a \in Actors: ActorRecv(msg,a)
 
 Spec == Init /\ [][Next]_vars
         /\ WF_vars(\E w \in Workers, a \in Actors: CreateWorker(w,a))
-       \* /\ WF_vars(\E w \in Workers, a \in Actors: WorkerRecv(w,a))
-       \* /\ WF_vars(\E w \in Workers, a \in Actors: WorkerBusy(w,a))
-        \*/\ WF_vars(\E w \in Workers,a \in Actors: FreeWorker(w,a))  
+        /\ WF_vars(\E w \in Workers, a \in Actors: WorkerRecv(w,a))
+        /\ WF_vars(\E w \in Workers, a \in Actors: WorkerBusy(w,a))
+        /\ WF_vars(\E w \in Workers,a \in Actors: FreeWorker(w,a))  
 
 =============================================================================
 \* Modification History
-\* Last modified Thu Aug 13 16:46:07 CDT 2020 by spadhy
+\* Last modified Fri Aug 14 12:25:17 CDT 2020 by spadhy
 \* Created Mon Aug 10 10:23:50 CDT 2020 by spadhy
