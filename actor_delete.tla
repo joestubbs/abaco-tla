@@ -27,10 +27,10 @@ VARIABLES msg_queues,         \* message_queues. One queue corresponds to an act
           tmsg,               \* a counter to keep track for total number of mesages sent
           totalNumWorkers,    \* a counter for total number of workers created so far
           workersCreated,     \* a set of workers created so far
-          cmd_queues,         \* command queues for workers
-          actorWorkers,        \* subset of workers for each actor
-          saveWork
-vars == <<msg_queues,actorStatus,workerStatus,m, tmsg, totalNumWorkers, workersCreated, cmd_queues,actorWorkers,saveWork>>        
+                              \* command queues for workers
+          actorWorkers        \* subset of workers for each actor
+          
+vars == <<msg_queues,actorStatus,workerStatus,m, tmsg, totalNumWorkers, workersCreated, actorWorkers>>        
 
 WorkerState == {"-","IDLE", "BUSY","FINISHED","STOPPING","DELETED"} \* Worker state
 AllActors == Actors \cup {"a0"}      \* actors in the Actors constant and a non-existent actor
@@ -46,11 +46,13 @@ TypeInvariant ==
   /\ msg_queues \in [Actors -> Seq(Messages)] \* multiple queues
   /\ workerStatus \in [Workers -> [actor:AllActors, status:WorkerState]] \* Note actor belongs to AllActors which incudes the non-existent actor
   /\ workersCreated \subseteq Workers
-  /\ cmd_queues \in [Workers -> Seq(Messages)]    \* one command queue for worker
+  \*/\ cmd_queues \in [Workers -> Seq(Messages)]    \* one command queue for worker
   /\ actorWorkers \in [Actors -> SUBSET Workers] \*  each actor mapped to subset of workers
  
   
-  
+  \* A temporal property: ensures the msq_queue is eventually 0 from now on.
+  \*AllMessagesProcessed == <>[](\A a \in Actors: Len(msg_queues[a]) = 0)    
+    
 
 Init == 
     /\ actorStatus = [a \in Actors |-> "READY"] 
@@ -60,22 +62,22 @@ Init ==
     /\ tmsg = 0
     /\ totalNumWorkers = 0
     /\ workersCreated = {}
-    /\ cmd_queues = [w \in Workers |-> <<>>]  \* all command queues are empty
+    \*/\ cmd_queues = [w \in Workers |-> <<>>]  \* all command queues are empty
     /\ actorWorkers = [a \in Actors |-> {}]   \* actorWorkers are also empty
-    /\ saveWork = 0
     
     
-ActorRecv(msg, a) ==    
+    
+ActorExecuteRecv(msg, a) ==    
     /\  actorStatus[a] = "READY"
     /\  msg.type = "EXECUTE"
     /\  tmsg < MaxMessage
     /\  Len(msg_queues[a]) <  MaxQueueSize
     /\  msg_queues'= [msg_queues EXCEPT ![a] = Append(msg_queues[a],msg)]
     /\  tmsg' = tmsg + 1
-    /\  UNCHANGED<<actorStatus,workerStatus,m,totalNumWorkers, workersCreated,cmd_queues,actorWorkers,saveWork>>   
+    /\  UNCHANGED<<actorStatus,workerStatus,m,totalNumWorkers, workersCreated,actorWorkers>>   
 
  
- ActorDeleteMsg(msg,a) ==
+ ActorDeleteRecv(msg,a) ==
     /\ actorStatus[a] = "READY"
     /\ msg.type = "DELETE"
     /\ msg.actor = a
@@ -83,27 +85,31 @@ ActorRecv(msg, a) ==
     /\ Len(msg_queues[a]) <  MaxQueueSize
     /\ msg_queues'= [msg_queues EXCEPT ![a] = Append(msg_queues[a],msg)]
     /\ actorStatus' = [actorStatus EXCEPT ![a] = "SHUTTING_DOWN"]
-    /\ UNCHANGED<<m, tmsg,workerStatus,totalNumWorkers, workersCreated, cmd_queues,actorWorkers,saveWork>>                                                                        
+    /\  tmsg' = tmsg + 1
+    /\ UNCHANGED<<m, workerStatus,totalNumWorkers, workersCreated, actorWorkers>>                                                                        
  
   
  DeleteWorker(w,a) ==
     /\ actorStatus[a] = "SHUTTING_DOWN"
-     /\ actorWorkers'=  [actorWorkers EXCEPT ![a] = actorWorkers[a] \ {w}] \*<-- may need to change to IF then else
-    /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"DELETED"]]                                                   
-    /\ UNCHANGED<<msg_queues,actorStatus,m, tmsg, totalNumWorkers, workersCreated, cmd_queues,saveWork>>                                                  
+    /\ workerStatus[w].status # "-"
+    /\ actorWorkers'=  [actorWorkers EXCEPT ![a] = actorWorkers[a] \ {w}]
+    /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"DELETED"]]  
+                                             
+    /\ UNCHANGED<<msg_queues,actorStatus,m, tmsg, totalNumWorkers, workersCreated>>                                                  
  
  
  DeleteActor(a) ==
      /\ actorStatus[a] = "SHUTTING_DOWN"
      /\ actorWorkers[a] = {}
      /\ actorStatus' = [actorStatus EXCEPT ![a]="DELETED"] 
-     /\ UNCHANGED<<msg_queues,workerStatus,m, tmsg, totalNumWorkers, workersCreated, cmd_queues,actorWorkers,saveWork>> 
+    \* /\ msg_queues'= [msg_queues EXCEPT ![a] = Tail(msg_queues[a])]
+     /\ UNCHANGED<<msg_queues,workerStatus,m, tmsg, totalNumWorkers, workersCreated,actorWorkers>> 
  
  
 
 
 CreateWorker(w,a) ==
-    /\ Len(msg_queues[a]) > ScaleUpThreshold
+    /\ Len(msg_queues[a]) >= ScaleUpThreshold
     /\ totalNumWorkers < MaxWorkers
     /\ actorStatus[a]="READY"
     /\ workerStatus[w]=[actor|->"a0", status|->"-"]
@@ -111,7 +117,7 @@ CreateWorker(w,a) ==
     /\ workersCreated' = workersCreated \cup {w}
     /\ actorWorkers' = [actorWorkers EXCEPT ![a]= actorWorkers[a] \cup {w}]                                              
     /\ totalNumWorkers' = totalNumWorkers + 1      
-    /\ UNCHANGED<<msg_queues,actorStatus,m,tmsg,cmd_queues,saveWork>>
+    /\ UNCHANGED<<msg_queues,actorStatus,m,tmsg>>
    
 
 WorkerRecv(w,a) ==
@@ -119,34 +125,40 @@ WorkerRecv(w,a) ==
     /\ workerStatus[w] = [actor|->a, status|->"IDLE"]
     /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"BUSY"]]  
     /\ msg_queues'= [msg_queues EXCEPT ![a] = Tail(msg_queues[a])]
-    /\ UNCHANGED<<actorStatus,m, tmsg, totalNumWorkers, workersCreated,cmd_queues,actorWorkers,saveWork>>    
+    /\ UNCHANGED<<actorStatus,m, tmsg, totalNumWorkers, workersCreated,actorWorkers>>    
 
 WorkerBusy(w,a) == 
     /\ workerStatus[w] = [actor|->a, status|->"BUSY"]  
     /\ m' = m + 1  
     /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"FINISHED"]]    
-    /\ UNCHANGED<<msg_queues,actorStatus,tmsg, totalNumWorkers, workersCreated,cmd_queues,actorWorkers,saveWork>>   
+    /\ UNCHANGED<<msg_queues,actorStatus,tmsg, totalNumWorkers, workersCreated,actorWorkers>>   
 
 FreeWorker(w,a) ==
- /\ workerStatus[w] = [actor|->a, status|->"FINISHED"]
- /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"IDLE"]] 
- /\ UNCHANGED<<msg_queues,actorStatus,m, tmsg, totalNumWorkers, workersCreated,cmd_queues,actorWorkers,saveWork>>         
+    /\ workerStatus[w] = [actor|->a, status|->"FINISHED"]
+    /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"IDLE"]] 
+    /\ UNCHANGED<<msg_queues,actorStatus,m, tmsg, totalNumWorkers, workersCreated,actorWorkers>>         
+
 
 Next == 
-            \/ \E msg \in Messages, a \in Actors: ActorRecv(msg,a) 
-            \/ \E msg \in Messages, a \in Actors:  ActorDeleteMsg(msg,a)
-            \/ \E w \in Workers,  a \in Actors: CreateWorker(w,a)  
-            \/ \E w \in Workers, a \in Actors: WorkerRecv(w, a)
-            \/ \E w \in Workers, a\in Actors: WorkerBusy(w,a)
-            \/ \E w \in Workers, a\in Actors: FreeWorker(w,a)
-            \/ \E w \in Workers, a \in Actors: DeleteWorker(w,a)
-            \/ \E a \in Actors: DeleteActor(a)
+    \/ \E msg \in Messages, a \in Actors: ActorExecuteRecv(msg,a) 
+    \/ \E msg \in Messages, a \in Actors:  ActorDeleteRecv(msg,a)
+    \/ \E w \in Workers,  a \in Actors: CreateWorker(w,a)  
+    \/ \E w \in Workers, a \in Actors: WorkerRecv(w, a)
+    \/ \E w \in Workers, a\in Actors: WorkerBusy(w,a)
+    \/ \E w \in Workers, a\in Actors: FreeWorker(w,a)
+    \/ \E w \in Workers, a \in Actors: DeleteWorker(w,a)
+    \/ \E a \in Actors: DeleteActor(a)
 
 Spec == Init /\ [][Next]_vars  
+        (*/\ WF_vars(\E w \in Workers, a \in Actors: CreateWorker(w,a))
+        /\ WF_vars(\E w \in Workers, a \in Actors: WorkerRecv(w,a))
+        /\ WF_vars(\E w \in Workers, a \in Actors: WorkerBusy(w,a))
+        /\ WF_vars(\E w \in Workers,a \in Actors: FreeWorker(w,a)) *) 
+        
 
 
 
 =============================================================================
 \* Modification History
-\* Last modified Thu Aug 13 18:18:43 CDT 2020 by spadhy
+\* Last modified Fri Aug 14 15:53:06 CDT 2020 by spadhy
 \* Created Thu Aug 13 00:58:32 CDT 2020 by spadhy
