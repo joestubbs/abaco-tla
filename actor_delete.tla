@@ -51,7 +51,7 @@ TypeInvariant ==
  
   
   \* A temporal property: ensures the msq_queue is eventually 0 from now on.
-  \*AllMessagesProcessed == <>[](\A a \in Actors: Len(msg_queues[a]) = 0)    
+  AllMessagesProcessed == <>[](\A a \in Actors: Len(msg_queues[a]) = 0)    
     
 
 Init == 
@@ -70,6 +70,7 @@ Init ==
 ActorExecuteRecv(msg, a) ==    
     /\  actorStatus[a] = "READY"
     /\  msg.type = "EXECUTE"
+    /\  msg.actor = a
     /\  tmsg < MaxMessage
     /\  Len(msg_queues[a]) <  MaxQueueSize
     /\  msg_queues'= [msg_queues EXCEPT ![a] = Append(msg_queues[a],msg)]
@@ -92,18 +93,21 @@ ActorExecuteRecv(msg, a) ==
  DeleteWorker(w,a) ==
     /\ actorStatus[a] = "SHUTTING_DOWN"
     /\ workerStatus[w].status # "-"
+    /\ w \in actorWorkers[a]
     /\ actorWorkers'=  [actorWorkers EXCEPT ![a] = actorWorkers[a] \ {w}]
     /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"DELETED"]]  
-                                             
     /\ UNCHANGED<<msg_queues,actorStatus,m, tmsg, totalNumWorkers, workersCreated>>                                                  
  
  
  DeleteActor(a) ==
      /\ actorStatus[a] = "SHUTTING_DOWN"
      /\ actorWorkers[a] = {}
+     /\ Len(msg_queues[a]) > 0
      /\ actorStatus' = [actorStatus EXCEPT ![a]="DELETED"] 
-    \* /\ msg_queues'= [msg_queues EXCEPT ![a] = Tail(msg_queues[a])]
-     /\ UNCHANGED<<msg_queues,workerStatus,m, tmsg, totalNumWorkers, workersCreated,actorWorkers>> 
+     \*/\ msg_queues' = [a1 \in Actors|-> IF a=a1 THEN <<>>
+     \*                                     ELSE  msg_queues[a]]
+     /\ msg_queues'= [msg_queues EXCEPT ![a] = <<>>]
+     /\ UNCHANGED<<workerStatus,m, tmsg, totalNumWorkers, workersCreated,actorWorkers>> 
  
  
 
@@ -122,18 +126,21 @@ CreateWorker(w,a) ==
 
 WorkerRecv(w,a) ==
     /\ Len(msg_queues[a]) > 0  
+    /\ actorStatus[a] # "SHUTTING_DOWN"
     /\ workerStatus[w] = [actor|->a, status|->"IDLE"]
     /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"BUSY"]]  
     /\ msg_queues'= [msg_queues EXCEPT ![a] = Tail(msg_queues[a])]
     /\ UNCHANGED<<actorStatus,m, tmsg, totalNumWorkers, workersCreated,actorWorkers>>    
 
 WorkerBusy(w,a) == 
+    /\ actorStatus[a] # "SHUTTING_DOWN"
     /\ workerStatus[w] = [actor|->a, status|->"BUSY"]  
     /\ m' = m + 1  
     /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"FINISHED"]]    
     /\ UNCHANGED<<msg_queues,actorStatus,tmsg, totalNumWorkers, workersCreated,actorWorkers>>   
 
 FreeWorker(w,a) ==
+    /\ actorStatus[a] # "SHUTTING_DOWN"
     /\ workerStatus[w] = [actor|->a, status|->"FINISHED"]
     /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"IDLE"]] 
     /\ UNCHANGED<<msg_queues,actorStatus,m, tmsg, totalNumWorkers, workersCreated,actorWorkers>>         
@@ -150,15 +157,16 @@ Next ==
     \/ \E a \in Actors: DeleteActor(a)
 
 Spec == Init /\ [][Next]_vars  
-        (*/\ WF_vars(\E w \in Workers, a \in Actors: CreateWorker(w,a))
+        /\ WF_vars(\E w \in Workers, a \in Actors: CreateWorker(w,a))
         /\ WF_vars(\E w \in Workers, a \in Actors: WorkerRecv(w,a))
         /\ WF_vars(\E w \in Workers, a \in Actors: WorkerBusy(w,a))
-        /\ WF_vars(\E w \in Workers,a \in Actors: FreeWorker(w,a)) *) 
-        
+        /\ WF_vars(\E w \in Workers,a \in Actors: FreeWorker(w,a))
+        /\ WF_vars(\E a \in Actors: DeleteActor(a))
+        /\ WF_vars(\E w \in Workers, a \in Actors: DeleteWorker(w,a))
 
 
 
 =============================================================================
 \* Modification History
-\* Last modified Fri Aug 14 15:53:06 CDT 2020 by spadhy
+\* Last modified Sun Aug 16 11:11:37 CDT 2020 by spadhy
 \* Created Thu Aug 13 00:58:32 CDT 2020 by spadhy
