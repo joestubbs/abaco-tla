@@ -18,7 +18,8 @@ CONSTANTS Actors,           \* Set of Actors
           MaxQueueSize,     \* Maximum queue size of the message queue.
           MaxMessage,       \* Maximum number of message that are sent
           MaxWorkers,       \* Maximum number of Workers that are allowed to be created 
-          ScaleUpThreshold  \* ScaleUpThreshold 
+          ScaleUpThreshold,  \* ScaleUpThreshold 
+          MaxWorkersPerActor
 
 VARIABLES msg_queues,         \* message_queues. One queue corresponds to an actor
           actorStatus,        \* set of actors
@@ -29,6 +30,8 @@ VARIABLES msg_queues,         \* message_queues. One queue corresponds to an act
           workersCreated,     \* a set of workers created so far
                               \* command queues for workers
           actorWorkers        \* subset of workers for each actor
+          
+         
           
 vars == <<msg_queues,actorStatus,workerStatus,m, tmsg, totalNumWorkers, workersCreated, actorWorkers>>        
 
@@ -115,6 +118,7 @@ ActorExecuteRecv(msg, a) ==
 CreateWorker(w,a) ==
     /\ Len(msg_queues[a]) >= ScaleUpThreshold
     /\ totalNumWorkers < MaxWorkers
+    /\ Cardinality(actorWorkers[a]) < MaxWorkersPerActor 
     /\ actorStatus[a]="READY"
     /\ workerStatus[w]=[actor|->"a0", status|->"-"]
     /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"IDLE"]] 
@@ -142,7 +146,7 @@ WorkerBusy(w,a) ==
 FreeWorker(w,a) ==
     /\ actorStatus[a] # "SHUTTING_DOWN"
     /\ workerStatus[w] = [actor|->a, status|->"FINISHED"]
-    /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"IDLE"]] 
+    /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"IDLE"]] \*<-- This is not ensuring worker returns to the common pool
     /\ UNCHANGED<<msg_queues,actorStatus,m, tmsg, totalNumWorkers, workersCreated,actorWorkers>>         
 
 
@@ -168,5 +172,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Sun Aug 16 11:11:37 CDT 2020 by spadhy
+\* Last modified Sun Aug 16 11:59:57 CDT 2020 by spadhy
 \* Created Thu Aug 13 00:58:32 CDT 2020 by spadhy
