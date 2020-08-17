@@ -172,5 +172,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Sun Aug 16 11:59:57 CDT 2020 by spadhy
+\* Last modified Mon Aug 17 11:44:21 CDT 2020 by spadhy
 \* Created Thu Aug 13 00:58:32 CDT 2020 by spadhy

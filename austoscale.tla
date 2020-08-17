@@ -107,7 +107,7 @@ FreeWorker(w) ==
    
 
 Spec == Init /\ [][Next]_vars  
-        \* Add weak fairness properties for each action we want to ensure eventually happens.
+        \*Add weak fairness properties for each action we want to ensure eventually happens.
         \* The expression inside the () must be a true/false expression.
         /\ WF_vars(\E w \in Workers: CreateWorker(w))
         /\ WF_vars(\E w \in Workers: WorkerRecv(w))
@@ -117,6 +117,6 @@ Spec == Init /\ [][Next]_vars
         
 =============================================================================
 \* Modification History
+\* Last modified Thu Aug 13 14:00:56 CDT 2020 by spadhy
 \* Last modified Mon Aug 10 15:37:10 CDT 2020 by jstubbs
-\* Last modified Wed Aug 05 14:54:17 CDT 2020 by spadhy
 \* Created Wed Aug 05 12:45:12 CDT 2020 by spadhy
