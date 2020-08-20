@@ -3,13 +3,12 @@ EXTENDS Naturals, FiniteSets, Sequences
 
 CONSTANTS Actors,           \* Set of Actors
           Workers,          \* Set of Workers
-         \* Message,          \* Set of messages that can be sent
           MaxQueueSize,     \* Maximum queue size of the message queue.
           MaxMessage,       \* Maximum number of message that are sent
           MaxWorkers,       \* Maximum number of Workers that are allowed to be created 
           ScaleUpThreshold,  \* ScaleUpThreshold 
-          MaxWorkersPerActor,
-          ImageVersion
+          MaxWorkersPerActor, \* Maximum number of Workers per Actors
+          ImageVersion       \* list of image versions
 
 VARIABLES msg_queues,         \* message_queues. One queue corresponds to an actor
           actorStatus,        \* set of actors
@@ -19,12 +18,12 @@ VARIABLES msg_queues,         \* message_queues. One queue corresponds to an act
           totalNumWorkers,    \* a counter for total number of workers created so far
           workersCreated,     \* a set of workers created so far
                               \* command queues for workers
-          actorWorkers,        \* subset of workers for each actor
-          actorImages,        \* images for each actor
-          currentImageVersion  \* current image version
+          actorWorkers,       \* subset of workers for each actor
+          
+          currentImageVersion  \* current image version for each actor
          
           
-vars == <<msg_queues,actorStatus,workerStatus,m, tmsg, totalNumWorkers, workersCreated, actorWorkers, actorImages, currentImageVersion>>        
+vars == <<msg_queues,actorStatus,workerStatus,m, tmsg, totalNumWorkers, workersCreated, actorWorkers, currentImageVersion>>        
 
 WorkerState == {"-","IDLE", "BUSY","FINISHED","STOPPING","DELETED"} \* Worker state
 AllActors == Actors \cup {"a0"}      \* actors in the Actors constant and a non-existent actor
@@ -42,7 +41,7 @@ TypeInvariant ==
   /\ workerStatus \in [Workers -> [actor:AllActors, status:WorkerState]] \* Note actor belongs to AllActors which incudes the non-existent actor
   /\ workersCreated \subseteq Workers
   /\ actorWorkers \in [Actors -> SUBSET Workers] \*  each actor mapped to subset of workers
-  /\ actorImages \in [Actors -> Seq(ImageVersion)]
+  \*/\ actorImages \in [Actors -> Seq(ImageVersion)]
   /\ currentImageVersion \in [Actors -> AllImageVersions]
  
   
@@ -58,26 +57,26 @@ Init ==
     /\ tmsg = 0
     /\ totalNumWorkers = 0
     /\ workersCreated = {}
-    \*/\ cmd_queues = [w \in Workers |-> <<>>]  \* all command queues are empty
     /\ actorWorkers = [a \in Actors |-> {}]   \* actorWorkers are also empty
-    /\ actorImages = [a \in Actors |-> <<>>]
-    /\ currentImageVersion = [a \in Actors |-> "-"]
+    \*/\ actorImages = [a \in Actors |-> <<>>]
+    /\ currentImageVersion = [a \in Actors |-> "-"] \* Initially no images
     
     
     
 ActorExecuteRecv(msg, a) ==    
-    /\  actorStatus[a]= "READY" 
+    /\  actorStatus[a]= "READY" \/ actorStatus[a]= "UPDATING_IMAGE"
     /\  msg.type = "EXECUTE"
     /\  msg.actor = a
-    /\  Len(actorImages[a])= 0 \/ msg.image = currentImageVersion[a] \* we do not allow an execute message if the  image is different from curren version
+   \* /\  Len(actorImages[a])= 0 \/ msg.image = currentImageVersion[a] \* we do not allow an execute message if the  image is different from current version
+   \* /\  currentImageVersion[a]="-" \/ msg.image = currentImageVersion[a] \* we do not allow an execute message if the  image is different from current version
     /\  tmsg < MaxMessage
     /\  Len(msg_queues[a]) <  MaxQueueSize
     /\  msg_queues'= [msg_queues EXCEPT ![a] = Append(msg_queues[a],msg)]
     /\  tmsg' = tmsg + 1
-    /\  actorImages' = [actorImages EXCEPT ![a] = Append(actorImages[a],msg.image)]
+    \*/\  actorImages' = [actorImages EXCEPT ![a] = Append(actorImages[a],msg.image)]
     /\  currentImageVersion'=[currentImageVersion EXCEPT ![a]= IF currentImageVersion[a]="-" THEN msg.image
                                                                                           ELSE currentImageVersion[a]] 
-    /\  UNCHANGED<<actorStatus,workerStatus,m,totalNumWorkers, workersCreated,actorWorkers>>   
+    /\  UNCHANGED<<actorStatus,workerStatus,m,totalNumWorkers, workersCreated, actorWorkers>>   
 
  
  ActorDeleteRecv(msg,a) ==
@@ -89,7 +88,7 @@ ActorExecuteRecv(msg, a) ==
     /\ msg_queues'= [msg_queues EXCEPT ![a] = Append(msg_queues[a],msg)]
     /\ actorStatus' = [actorStatus EXCEPT ![a] = "SHUTTING_DOWN"]
     /\ tmsg' = tmsg + 1
-    /\ UNCHANGED<<m, workerStatus,totalNumWorkers, workersCreated, actorWorkers,actorImages, currentImageVersion>>                                                                        
+    /\ UNCHANGED<<m, workerStatus,totalNumWorkers, workersCreated, actorWorkers, currentImageVersion>>                                                                        
  
  ActorUpdateRecv(msg, a) ==    
     /\  actorStatus[a] = "READY"
@@ -97,33 +96,34 @@ ActorExecuteRecv(msg, a) ==
     /\  msg.actor = a
     /\  tmsg < MaxMessage
     /\  Len(msg_queues[a]) <  MaxQueueSize
-    /\  msg_queues'= [msg_queues EXCEPT ![a] = Append(msg_queues[a],msg)]
+    \*/\  msg_queues'= [msg_queues EXCEPT ![a] = Append(msg_queues[a],msg)]
     /\  actorStatus' = [actorStatus EXCEPT ![a] = "UPDATING_IMAGE"]
     /\  currentImageVersion' = [currentImageVersion EXCEPT ![a] = msg.image]
-    /\  actorImages' = [actorImages EXCEPT ![a] = Append(actorImages[a],msg.image)]
+    \*/\  actorImages' = [actorImages EXCEPT ![a] = Append(actorImages[a],msg.image)]
     /\  tmsg' = tmsg + 1
-    /\  UNCHANGED<<workerStatus,m,totalNumWorkers, workersCreated,actorWorkers>>  
+    /\  UNCHANGED<<msg_queues,workerStatus,m,totalNumWorkers, workersCreated,actorWorkers>>  
  
  UpdateActor(a) == 
          /\ actorStatus[a] = "UPDATING_IMAGE"
-         /\ \A w \in actorWorkers[a]: IF workerStatus[w]=[actor|->a, status|->"IDLE"] THEN TRUE
-                                                                                      ELSE FALSE 
+         /\ actorWorkers[a] = {}
+        \* /\ \A w \in actorWorkers[a]: IF workerStatus[w]=[actor|->a, status|->"IDLE"] THEN TRUE
+        \*                                                                              ELSE FALSE 
          \*/\ [w \in actorWorkers[a] |-> workerStatus[w]=[actor|->a, status|->"IDLE"] ]  
-         /\ actorImages' = [actorImages EXCEPT ![a] = IF Len(actorImages[a])=0 THEN actorImages[a]
-                                                                               ELSE Tail(actorImages[a])]
+         \*/\ actorImages' = [actorImages EXCEPT ![a] = IF Len(actorImages[a])=0 THEN actorImages[a]
+         \*                                                                      ELSE Tail(actorImages[a])]
          /\ actorStatus' = [actorStatus EXCEPT ![a] = "READY"]
-         /\ msg_queues'= [msg_queues EXCEPT ![a] = Tail(msg_queues[a])]
-         /\ UNCHANGED<<tmsg,workerStatus,m,totalNumWorkers, workersCreated,actorWorkers,currentImageVersion>>
+        \* /\ msg_queues'= [msg_queues EXCEPT ![a] = Tail(msg_queues[a])]
+         /\ UNCHANGED<<msg_queues,tmsg,workerStatus,m,totalNumWorkers, workersCreated,actorWorkers,currentImageVersion>>
          
          
   
  DeleteWorker(w,a) ==
-    /\ actorStatus[a] = "SHUTTING_DOWN"
+    /\ actorStatus[a] = "SHUTTING_DOWN" \/ (actorStatus[a] = "UPDATING_IMAGE" /\ workerStatus[w].status = "IDLE")
     /\ workerStatus[w].status # "-"
     /\ w \in actorWorkers[a]
     /\ actorWorkers'=  [actorWorkers EXCEPT ![a] = actorWorkers[a] \ {w}]
     /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"DELETED"]]  
-    /\ UNCHANGED<<msg_queues,actorStatus,m, tmsg, totalNumWorkers, workersCreated,actorImages, currentImageVersion>>                                                  
+    /\ UNCHANGED<<msg_queues,actorStatus,m, tmsg, totalNumWorkers, workersCreated, currentImageVersion>>                                                  
  
  
  DeleteActor(a) ==
@@ -135,7 +135,7 @@ ActorExecuteRecv(msg, a) ==
      \*                                     ELSE  msg_queues[a]]
      /\ msg_queues'= [msg_queues EXCEPT ![a] = <<>>]
      
-     /\ UNCHANGED<<workerStatus,m, tmsg, totalNumWorkers, workersCreated,actorWorkers,actorImages, currentImageVersion>> 
+     /\ UNCHANGED<<workerStatus,m, tmsg, totalNumWorkers, workersCreated,actorWorkers, currentImageVersion>> 
  
  
 
@@ -150,7 +150,7 @@ CreateWorker(w,a) ==
     /\ workersCreated' = workersCreated \cup {w}
     /\ actorWorkers' = [actorWorkers EXCEPT ![a]= actorWorkers[a] \cup {w}]                                              
     /\ totalNumWorkers' = totalNumWorkers + 1      
-    /\ UNCHANGED<<msg_queues,actorStatus,m,tmsg,actorImages, currentImageVersion>>
+    /\ UNCHANGED<<msg_queues,actorStatus,m,tmsg, currentImageVersion>>
    
 
 WorkerRecv(w,a) ==
@@ -160,7 +160,7 @@ WorkerRecv(w,a) ==
     /\ workerStatus[w] = [actor|->a, status|->"IDLE"]
     /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"BUSY"]]  
     /\ msg_queues'= [msg_queues EXCEPT ![a] = Tail(msg_queues[a])]
-    /\ actorImages' = [actorImages EXCEPT ![a] = Tail(actorImages[a])]
+    \*/\ actorImages' = [actorImages EXCEPT ![a] = Tail(actorImages[a])]
     /\ UNCHANGED<<actorStatus,m, tmsg, totalNumWorkers, workersCreated,actorWorkers, currentImageVersion>>    
 
 WorkerBusy(w,a) == 
@@ -168,13 +168,13 @@ WorkerBusy(w,a) ==
     /\ workerStatus[w] = [actor|->a, status|->"BUSY"]  
     /\ m' = m + 1  
     /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"FINISHED"]]    
-    /\ UNCHANGED<<msg_queues,actorStatus,tmsg, totalNumWorkers, workersCreated,actorWorkers,actorImages,currentImageVersion>>   
+    /\ UNCHANGED<<msg_queues,actorStatus,tmsg, totalNumWorkers, workersCreated,actorWorkers, currentImageVersion>>   
 
 FreeWorker(w,a) ==
     /\ actorStatus[a] # "SHUTTING_DOWN"
     /\ workerStatus[w] = [actor|->a, status|->"FINISHED"]
     /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"IDLE"]] \*<-- This is not ensuring worker returns to the common pool
-    /\ UNCHANGED<<msg_queues,actorStatus,m, tmsg, totalNumWorkers, workersCreated,actorWorkers,actorImages, currentImageVersion>>         
+    /\ UNCHANGED<<msg_queues,actorStatus,m, tmsg, totalNumWorkers, workersCreated,actorWorkers, currentImageVersion>>         
 
 
 Next == 
@@ -200,5 +200,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Wed Aug 19 18:03:30 CDT 2020 by spadhy
+\* Last modified Thu Aug 20 17:27:24 CDT 2020 by spadhy
 \* Created Wed Aug 19 11:19:50 CDT 2020 by spadhy
