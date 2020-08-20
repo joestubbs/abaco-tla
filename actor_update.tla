@@ -41,7 +41,6 @@ TypeInvariant ==
   /\ workerStatus \in [Workers -> [actor:AllActors, status:WorkerState]] \* Note actor belongs to AllActors which incudes the non-existent actor
   /\ workersCreated \subseteq Workers
   /\ actorWorkers \in [Actors -> SUBSET Workers] \*  each actor mapped to subset of workers
-  \*/\ actorImages \in [Actors -> Seq(ImageVersion)]
   /\ currentImageVersion \in [Actors -> AllImageVersions]
  
   
@@ -58,7 +57,6 @@ Init ==
     /\ totalNumWorkers = 0
     /\ workersCreated = {}
     /\ actorWorkers = [a \in Actors |-> {}]   \* actorWorkers are also empty
-    \*/\ actorImages = [a \in Actors |-> <<>>]
     /\ currentImageVersion = [a \in Actors |-> "-"] \* Initially no images
     
     
@@ -67,13 +65,10 @@ ActorExecuteRecv(msg, a) ==
     /\  actorStatus[a]= "READY" \/ actorStatus[a]= "UPDATING_IMAGE"
     /\  msg.type = "EXECUTE"
     /\  msg.actor = a
-   \* /\  Len(actorImages[a])= 0 \/ msg.image = currentImageVersion[a] \* we do not allow an execute message if the  image is different from current version
-   \* /\  currentImageVersion[a]="-" \/ msg.image = currentImageVersion[a] \* we do not allow an execute message if the  image is different from current version
     /\  tmsg < MaxMessage
     /\  Len(msg_queues[a]) <  MaxQueueSize
     /\  msg_queues'= [msg_queues EXCEPT ![a] = Append(msg_queues[a],msg)]
     /\  tmsg' = tmsg + 1
-    \*/\  actorImages' = [actorImages EXCEPT ![a] = Append(actorImages[a],msg.image)]
     /\  currentImageVersion'=[currentImageVersion EXCEPT ![a]= IF currentImageVersion[a]="-" THEN msg.image
                                                                                           ELSE currentImageVersion[a]] 
     /\  UNCHANGED<<actorStatus,workerStatus,m,totalNumWorkers, workersCreated, actorWorkers>>   
@@ -96,23 +91,15 @@ ActorExecuteRecv(msg, a) ==
     /\  msg.actor = a
     /\  tmsg < MaxMessage
     /\  Len(msg_queues[a]) <  MaxQueueSize
-    \*/\  msg_queues'= [msg_queues EXCEPT ![a] = Append(msg_queues[a],msg)]
     /\  actorStatus' = [actorStatus EXCEPT ![a] = "UPDATING_IMAGE"]
     /\  currentImageVersion' = [currentImageVersion EXCEPT ![a] = msg.image]
-    \*/\  actorImages' = [actorImages EXCEPT ![a] = Append(actorImages[a],msg.image)]
     /\  tmsg' = tmsg + 1
     /\  UNCHANGED<<msg_queues,workerStatus,m,totalNumWorkers, workersCreated,actorWorkers>>  
  
  UpdateActor(a) == 
          /\ actorStatus[a] = "UPDATING_IMAGE"
          /\ actorWorkers[a] = {}
-        \* /\ \A w \in actorWorkers[a]: IF workerStatus[w]=[actor|->a, status|->"IDLE"] THEN TRUE
-        \*                                                                              ELSE FALSE 
-         \*/\ [w \in actorWorkers[a] |-> workerStatus[w]=[actor|->a, status|->"IDLE"] ]  
-         \*/\ actorImages' = [actorImages EXCEPT ![a] = IF Len(actorImages[a])=0 THEN actorImages[a]
-         \*                                                                      ELSE Tail(actorImages[a])]
          /\ actorStatus' = [actorStatus EXCEPT ![a] = "READY"]
-        \* /\ msg_queues'= [msg_queues EXCEPT ![a] = Tail(msg_queues[a])]
          /\ UNCHANGED<<msg_queues,tmsg,workerStatus,m,totalNumWorkers, workersCreated,actorWorkers,currentImageVersion>>
          
          
@@ -131,8 +118,6 @@ ActorExecuteRecv(msg, a) ==
      /\ actorWorkers[a] = {}
      /\ Len(msg_queues[a]) > 0
      /\ actorStatus' = [actorStatus EXCEPT ![a]="DELETED"] 
-     \*/\ msg_queues' = [a1 \in Actors|-> IF a=a1 THEN <<>>
-     \*                                     ELSE  msg_queues[a]]
      /\ msg_queues'= [msg_queues EXCEPT ![a] = <<>>]
      
      /\ UNCHANGED<<workerStatus,m, tmsg, totalNumWorkers, workersCreated,actorWorkers, currentImageVersion>> 
@@ -160,7 +145,6 @@ WorkerRecv(w,a) ==
     /\ workerStatus[w] = [actor|->a, status|->"IDLE"]
     /\ workerStatus' = [workerStatus EXCEPT ![w]=[actor|->a, status|->"BUSY"]]  
     /\ msg_queues'= [msg_queues EXCEPT ![a] = Tail(msg_queues[a])]
-    \*/\ actorImages' = [actorImages EXCEPT ![a] = Tail(actorImages[a])]
     /\ UNCHANGED<<actorStatus,m, tmsg, totalNumWorkers, workersCreated,actorWorkers, currentImageVersion>>    
 
 WorkerBusy(w,a) == 
@@ -200,5 +184,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Thu Aug 20 17:27:24 CDT 2020 by spadhy
+\* Last modified Thu Aug 20 17:45:25 CDT 2020 by spadhy
 \* Created Wed Aug 19 11:19:50 CDT 2020 by spadhy
